@@ -97,6 +97,7 @@ Hugo AI can query metrics and manage alerts via [mcp/monitoring-tools.md](mcp/mo
 **MCP Templates:**
 - `mcp/MCP-OPERATIONS-SETUP.md` — Required tools and safety model
 - `mcp/MINECRAFT-SUPPORT-ROADMAP.md` — Roadmap for deeper support workflows (logs/config/mods)
+- `mcp/MCP-IMPLEMENTATION-CHECKLIST.md` — Fast implementation checklist once MCP repo exists
 - `mcp/templates/pexnode-monitoring-mcp.env.example` — MCP env template
 - `mcp/templates/mcp-tools-required.json` — Required tool catalog
 

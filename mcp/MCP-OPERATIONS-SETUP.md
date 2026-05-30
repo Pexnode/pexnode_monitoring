@@ -60,6 +60,7 @@ This setup targets only Minecraft operations and includes:
 - templates/pexnode-monitoring-mcp.env.example
 - templates/mcp-tools-required.json
 - MINECRAFT-SUPPORT-ROADMAP.md
+- MCP-IMPLEMENTATION-CHECKLIST.md
 
 ## Implementation target
 
