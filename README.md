@@ -75,6 +75,7 @@ Hugo AI can query metrics and manage alerts via [mcp/monitoring-tools.md](mcp/mo
 - `scripts/setup-host-maintenance.sh` — Installs recurring health/cleanup jobs on host
 - `scripts/preflight-check.sh` — Operator preflight checks before deploy actions
 - `scripts/support/minecraft-node-diagnose.sh` — Read-only node diagnostics for support
+- `scripts/support/minecraft-install-endpoints-smoke.sh` — API smoke tests for install endpoints
 - `scripts/support/quarantine-path.sh` — Move suspicious files to quarantine (non-destructive)
 - `scripts/support/ptero-server-action.sh` — Minecraft-safe start/stop/restart/command/reinstall actions
 - `scripts/CLOUD-INIT-SETUP.md` — Cloud provider integration (Azure, AWS, etc.)
