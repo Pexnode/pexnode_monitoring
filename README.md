@@ -73,6 +73,10 @@ Hugo AI can query metrics and manage alerts via [mcp/monitoring-tools.md](mcp/mo
 - `scripts/provision-wings-node.sh` — Complete node setup (Wings + security + monitoring)
 - `scripts/provision-wings-bootstrap.sh` — Cloud-init wrapper for automated provisioning
 - `scripts/setup-host-maintenance.sh` — Installs recurring health/cleanup jobs on host
+- `scripts/preflight-check.sh` — Operator preflight checks before deploy actions
+- `scripts/support/minecraft-node-diagnose.sh` — Read-only node diagnostics for support
+- `scripts/support/quarantine-path.sh` — Move suspicious files to quarantine (non-destructive)
+- `scripts/support/ptero-server-action.sh` — Minecraft-safe start/stop/restart/command/reinstall actions
 - `scripts/CLOUD-INIT-SETUP.md` — Cloud provider integration (Azure, AWS, etc.)
 
 **Azure Automation:**
@@ -87,10 +91,12 @@ Hugo AI can query metrics and manage alerts via [mcp/monitoring-tools.md](mcp/mo
 - `docs/AUTO-ENROLLMENT.md` — Auto-enroll existing hosts
 - `docs/WINGS-PROVISIONING.md` — New game node provisioning
 - `docs/TROUBLESHOOTING.md` — Common issues and fixes
+- `docs/MINECRAFT-SUPPORT-PLAYBOOK.md` — Support playbook for Minecraft incidents
 - `mcp/` — MCP tool specifications for Hugo AI
 
 **MCP Templates:**
 - `mcp/MCP-OPERATIONS-SETUP.md` — Required tools and safety model
+- `mcp/MINECRAFT-SUPPORT-ROADMAP.md` — Roadmap for deeper support workflows (logs/config/mods)
 - `mcp/templates/pexnode-monitoring-mcp.env.example` — MCP env template
 - `mcp/templates/mcp-tools-required.json` — Required tool catalog
 

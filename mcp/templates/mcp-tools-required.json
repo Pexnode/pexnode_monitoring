@@ -8,6 +8,12 @@
     "ptero.server_power",
     "ptero.send_server_command",
     "ptero.reinstall_server",
+    "ptero.tail_latest_log",
+    "ptero.search_logs",
+    "ptero.move_file_to_quarantine",
+    "ptero.restore_quarantined_file",
+    "ptero.patch_config_file",
+    "ptero.install_artifact",
     "ptero.get_server_status",
     "ptero.get_server_details",
     "whmcs.get_client",
@@ -18,5 +24,15 @@
   "writeToolsRequire": {
     "MCP_ENABLE_WRITES": true,
     "MCP_ALLOWED_GAMES": ["minecraft"]
+  },
+  "safetyRequirements": {
+    "quarantineBeforeDelete": true,
+    "configPatchAllowlist": [
+      "server.properties",
+      "paper.yml",
+      "spigot.yml",
+      "bukkit.yml"
+    ],
+    "artifactInstallNeedsChecksum": true
   }
 }

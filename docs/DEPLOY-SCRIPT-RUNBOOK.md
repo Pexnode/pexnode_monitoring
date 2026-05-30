@@ -2,6 +2,8 @@
 
 Primary script: `scripts/deploy-wing-host.sh`
 
+Preflight script: `scripts/preflight-check.sh`
+
 ## What it does
 
 1. Validates required env vars and arguments.
@@ -27,9 +29,18 @@ Optional env vars:
 ## Example
 
 ```bash
+./scripts/preflight-check.sh
+
 PANEL_URL=https://panel.pexnode.com \
 WINGS_API_KEY=ptla_xxxxx \
 NETDATA_TOKEN=claim_xxxxx \
+./scripts/deploy-wing-host.sh 10.20.0.11 11 2222
+```
+
+Dry run:
+
+```bash
+DRY_RUN=true PANEL_URL=https://panel.pexnode.com WINGS_API_KEY=ptla_xxxxx \
 ./scripts/deploy-wing-host.sh 10.20.0.11 11 2222
 ```
 

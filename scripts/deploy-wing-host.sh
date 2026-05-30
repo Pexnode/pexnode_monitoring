@@ -24,6 +24,7 @@ HARDENED_SSH_PORT="${3:-2222}"
 PANEL_URL="${PANEL_URL:-https://panel.pexnode.com}"
 WINGS_API_KEY="${WINGS_API_KEY:-}"
 NETDATA_TOKEN="${NETDATA_TOKEN:-}"
+DRY_RUN="${DRY_RUN:-false}"
 
 DEPLOY_SSH_USER="${DEPLOY_SSH_USER:-root}"
 REMOTE_SSH_PORT="${REMOTE_SSH_PORT:-22}"
@@ -69,6 +70,12 @@ retry_ssh() {
 
 retry_ssh
 
+if [[ "$DRY_RUN" == "true" ]]; then
+  echo "DRY_RUN=true; checks passed for ${TARGET_IP}"
+  echo "Would run provisioning with NODE_ID=${NODE_ID}, hardened SSH port=${HARDENED_SSH_PORT}"
+  exit 0
+fi
+
 echo "Preparing remote workspace on ${TARGET_IP}"
 ssh "${SSH_ARGS[@]}" "$REMOTE" "mkdir -p ${REMOTE_WORKDIR}"
 
@@ -100,6 +107,26 @@ echo "Remote deployment finished"
 EOF
 
 echo "Deployment completed for ${TARGET_IP}"
+
+VERIFY_PORT="$HARDENED_SSH_PORT"
+echo "Running post-deploy verification over SSH port ${VERIFY_PORT}"
+VERIFY_SSH_ARGS=( -p "$VERIFY_PORT" )
+if [[ -n "$DEPLOY_SSH_KEY" ]]; then
+  VERIFY_SSH_ARGS+=( -i "$DEPLOY_SSH_KEY" )
+fi
+# shellcheck disable=SC2206
+VERIFY_SSH_ARGS+=( ${DEPLOY_SSH_OPTIONS} )
+
+ssh "${VERIFY_SSH_ARGS[@]}" "$REMOTE" bash -s << 'EOF'
+set -Eeuo pipefail
+systemctl is-active --quiet wings
+systemctl is-active --quiet docker
+if docker ps -a --format '{{.Names}}' | grep -qx 'netdata-child'; then
+  docker ps --format '{{.Names}}' | grep -qx 'netdata-child'
+fi
+echo "Post-deploy checks passed"
+EOF
+
 if [[ "$HARDENED_SSH_PORT" != "$REMOTE_SSH_PORT" ]]; then
   echo "SSH port changed from ${REMOTE_SSH_PORT} to ${HARDENED_SSH_PORT}; use the new port for next connections."
 fi

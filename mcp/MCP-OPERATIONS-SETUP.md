@@ -31,17 +31,35 @@ This setup targets only Minecraft operations and includes:
 4. Troubleshooting
 - run predefined checks for node health, panel API reachability, and billing linkage
 
+5. Support file workflows (safe)
+- list files
+- read file content
+- move file to quarantine (no hard delete by default)
+- restore from quarantine
+
+6. Config adjustments
+- controlled config patch tool with allowlist (server.properties, paper.yml, spigot.yml, bukkit.yml)
+- rollback snapshot before write
+
+7. Mods/plugins management roadmap
+- phase 1: upload/update by signed URL + checksum validation
+- phase 2: compatibility checks against server version and loader type
+- phase 3: policy engine for approved plugin/mod sources
+
 ## Safety model
 
 - Write tools must be gated by `MCP_ENABLE_WRITES=true`
 - Restrict write actions to Minecraft product identifiers
 - Require explicit server match before write action
 - Keep WHMCS writes disabled in MCP
+- Require quarantine move for risky file changes before destructive actions
+- Prefer patch/update tools over direct overwrite
 
 ## Files
 
 - templates/pexnode-monitoring-mcp.env.example
 - templates/mcp-tools-required.json
+- MINECRAFT-SUPPORT-ROADMAP.md
 
 ## Implementation target
 
