@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  netdata:
+    image: netdata/netdata:latest
+    container_name: netdata-parent
+    hostname: netdata-parent
+    restart: unless-stopped
+    cap_add:
+      - SYS_PTRACE
+      - SYS_ADMIN
+    security_opt:
+      - apparmor=unconfined
+    ports:
+      - "19999:19999"
+    environment:
+      # Parent mode configuration
+      NETDATA_CLAIM_TOKEN: ${NETDATA_CLAIM_TOKEN:-}
+      NETDATA_CLAIM_URL: ${NETDATA_CLAIM_URL:-https://app.netdata.cloud}
+      NETDATA_CLAIM_ONLY: "no"
+      
+      # UI settings
+      NETDATA_TELEMETRY: "no"
+      
+      # Enable streaming (for children to connect)
+      NETDATA_API_KEY: ${NETDATA_API_KEY:-pexnode-monitoring-key}
+    volumes:
+      - netdata_lib:/var/lib/netdata
+      - netdata_cache:/var/cache/netdata
+      - netdata_config:/etc/netdata
+      - ./netdata.conf:/etc/netdata/netdata.conf:ro
+      - ./health.d:/etc/netdata/health.d:ro
+      - ./stream.conf:/etc/netdata/stream.conf:ro
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:19999/api/v1/info"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Optional: Proxy for Azure public endpoint
+  caddy:
+    image: caddy:latest
+    container_name: netdata-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      NETDATA_HOST: netdata
+      NETDATA_PORT: 19999
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - monitoring
+    depends_on:
+      - netdata
+
+volumes:
+  netdata_lib:
+  netdata_cache:
+  netdata_config:
+  caddy_data:
+  caddy_config:
+
+networks:
+  monitoring:
+    driver: bridge

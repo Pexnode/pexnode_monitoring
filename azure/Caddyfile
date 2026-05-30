@@ -1,0 +1,16 @@
+# Optional: Caddy reverse proxy for Azure public endpoint
+# This exposes Netdata on your custom domain with HTTPS
+
+# For local Azure Container Instances testing (no cert)
+http://:80 {
+    reverse_proxy netdata:19999 {
+        header_uri -X-Original-URI /
+    }
+}
+
+# For production with custom domain, uncomment and update:
+# https://monitoring.pexnode.com {
+#     reverse_proxy netdata:19999 {
+#         header_uri -X-Original-URI /
+#     }
+# }
