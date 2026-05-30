@@ -34,6 +34,7 @@ Minimum support tools:
 Use application API endpoints added in panel:
 - `POST /api/application/servers/{server_id}/minecraft/plugins/install`
 - `POST /api/application/servers/{server_id}/bedrock/addons/install`
+- `POST /api/application/servers/{server_id}/bedrock/addons/install-uploaded`
 
 ## 4. Safety gates
 
@@ -41,6 +42,7 @@ Use application API endpoints added in panel:
 - [ ] reject non-minecraft write targets
 - [ ] require quarantine-first for risky file operations
 - [ ] require checksum for artifact installs
+- [ ] for uploaded bedrock installs, send `checksum_sha256` (or enforce policy in panel)
 - [ ] keep WHMCS operations read-only
 
 ## 5. Validation
