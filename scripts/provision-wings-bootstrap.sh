@@ -35,7 +35,7 @@ echo "Host: $(hostname)"
 echo ""
 
 # Download and execute provisioning script
-PROVISION_URL="https://raw.githubusercontent.com/your-org/pexnode_monitoring/main/scripts/provision-wings-node.sh"
+PROVISION_URL="${PROVISION_URL:-https://raw.githubusercontent.com/Pexnode/pexnode_monitoring/main/scripts/provision-wings-node.sh}"
 
 curl -fsSL "$PROVISION_URL" -o /tmp/provision-wings-node.sh
 chmod +x /tmp/provision-wings-node.sh

@@ -2,12 +2,22 @@
 # Enroll a host in Pexnode monitoring
 # Usage: ./enroll-host.sh <host_ip> <claim_token> [<claim_url>]
 
-set -e
+set -Eeuo pipefail
+
+on_error() {
+  local exit_code=$?
+  local line_no=$1
+  echo "ERROR: enroll-host.sh failed at line ${line_no} (exit ${exit_code})"
+  exit "$exit_code"
+}
+
+trap 'on_error $LINENO' ERR
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOST_IP="${1:-}"
 CLAIM_TOKEN="${2:-}"
 CLAIM_URL="${3:-https://app.netdata.cloud}"
+NETDATA_IMAGE="${NETDATA_IMAGE:-netdata/netdata:latest}"
 
 if [[ -z "$HOST_IP" ]] || [[ -z "$CLAIM_TOKEN" ]]; then
   echo "Usage: $0 <host_ip> <claim_token> [<claim_url>]"
@@ -53,92 +63,133 @@ echo "[3/5] Host hostname: $HOSTNAME"
 
 # Deploy child container
 echo "[4/5] Deploying Netdata child container..."
-ssh root@"$HOST_IP" bash << DEPLOY_SCRIPT
-set -e
+ssh root@"$HOST_IP" bash -s -- "$CLAIM_TOKEN" "$CLAIM_URL" "$HOSTNAME" "$NETDATA_IMAGE" << 'DEPLOY_SCRIPT'
+set -Eeuo pipefail
 
-# Stop old Netdata child if running
-docker stop netdata-child 2>/dev/null || true
-docker rm netdata-child 2>/dev/null || true
+CLAIM_TOKEN="$1"
+CLAIM_URL="$2"
+HOSTNAME="$3"
+NETDATA_IMAGE="$4"
 
-# Get parent URL from environment or use local
-PARENT_URL="\${NETDATA_PARENT_URL:-monitoring-parent.pexnode.internal:19999}"
+if docker ps --format '{{.Names}}' | grep -qx 'netdata-child'; then
+  echo "netdata-child already running"
+  exit 0
+fi
 
-# Run child container
-docker run -d \\
-  --name netdata-child \\
-  --hostname "$HOSTNAME" \\
-  --network host \\
-  --cap-add SYS_PTRACE \\
-  --cap-add SYS_ADMIN \\
-  --security-opt apparmor=unconfined \\
-  -e NETDATA_CLAIM_TOKEN="$CLAIM_TOKEN" \\
-  -e NETDATA_CLAIM_URL="$CLAIM_URL" \\
-  -e NETDATA_CLAIM_ONLY="yes" \\
-  -e NETDATA_TELEMETRY="no" \\
-  -e DOCKER_HOST=unix:///var/run/docker.sock \\
-  -v /etc/os-release:/host/etc/os-release:ro \\
-  -v /proc:/host/proc:ro \\
-  -v /sys:/host/sys:ro \\
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
-  -v /etc/timezone:/etc/timezone:ro \\
-  netdata/netdata:latest
+if docker ps -a --format '{{.Names}}' | grep -qx 'netdata-child'; then
+  echo "starting existing netdata-child container"
+  docker start netdata-child >/dev/null
+  exit 0
+fi
 
-echo "Netdata child started"
-sleep 3
+docker pull "$NETDATA_IMAGE" >/dev/null 2>&1 || true
 
-# Verify container is running
-if ! docker ps | grep -q netdata-child; then
-  echo "❌ Netdata child failed to start"
-  docker logs netdata-child
+docker_args=(
+  run -d
+  --name netdata-child
+  --hostname "$HOSTNAME"
+  --network host
+  --cap-add SYS_PTRACE
+  --cap-add SYS_ADMIN
+  --security-opt apparmor=unconfined
+  -e NETDATA_CLAIM_TOKEN="$CLAIM_TOKEN"
+  -e NETDATA_CLAIM_URL="$CLAIM_URL"
+  -e NETDATA_CLAIM_ONLY=yes
+  -e NETDATA_TELEMETRY=no
+  -e DOCKER_HOST=unix:///var/run/docker.sock
+  -v /etc/os-release:/host/etc/os-release:ro
+  -v /proc:/host/proc:ro
+  -v /sys:/host/sys:ro
+  -v /var/run/docker.sock:/var/run/docker.sock:ro
+)
+
+if [[ -f /etc/timezone ]]; then
+  docker_args+=( -v /etc/timezone:/etc/timezone:ro )
+elif [[ -f /etc/localtime ]]; then
+  docker_args+=( -v /etc/localtime:/etc/localtime:ro )
+fi
+
+docker_args+=( "$NETDATA_IMAGE" )
+docker "${docker_args[@]}"
+
+if ! docker ps --format '{{.Names}}' | grep -qx 'netdata-child'; then
+  echo "netdata-child failed to start"
+  docker logs --tail 60 netdata-child || true
   exit 1
 fi
 
-echo "✅ Netdata child is running"
-
+echo "netdata-child deployed"
 DEPLOY_SCRIPT
 
 echo "✅ Child container deployed"
 
 # Setup auto-enrollment on reboot
 echo "[5/5] Setting up auto-enrollment..."
-ssh root@"$HOST_IP" bash << AUTO_SCRIPT
-set -e
+ssh root@"$HOST_IP" bash -s -- "$CLAIM_TOKEN" "$CLAIM_URL" "$NETDATA_IMAGE" << 'AUTO_SCRIPT'
+set -Eeuo pipefail
 
-# Create enrollment script
+CLAIM_TOKEN="$1"
+CLAIM_URL="$2"
+NETDATA_IMAGE="$3"
+
 mkdir -p /opt/pexnode-monitoring
+
+cat > /etc/pexnode-monitoring.env << EOF
+CLAIM_TOKEN=$CLAIM_TOKEN
+CLAIM_URL=$CLAIM_URL
+NETDATA_IMAGE=$NETDATA_IMAGE
+EOF
+chmod 600 /etc/pexnode-monitoring.env
+
 cat > /opt/pexnode-monitoring/enroll-child.sh << 'EOF'
 #!/bin/bash
-# Auto-enroll Netdata child on host boot
-CLAIM_TOKEN="$CLAIM_TOKEN"
-CLAIM_URL="$CLAIM_URL"
-HOSTNAME=\$(hostname -f 2>/dev/null || hostname)
+set -Eeuo pipefail
 
-docker stop netdata-child 2>/dev/null || true
-docker rm netdata-child 2>/dev/null || true
+source /etc/pexnode-monitoring.env
+HOSTNAME=$(hostname -f 2>/dev/null || hostname)
 
-docker run -d \\
-  --name netdata-child \\
-  --hostname "\$HOSTNAME" \\
-  --network host \\
-  --cap-add SYS_PTRACE \\
-  --cap-add SYS_ADMIN \\
-  --security-opt apparmor=unconfined \\
-  -e NETDATA_CLAIM_TOKEN="\$CLAIM_TOKEN" \\
-  -e NETDATA_CLAIM_URL="\$CLAIM_URL" \\
-  -e NETDATA_CLAIM_ONLY="yes" \\
-  -e NETDATA_TELEMETRY="no" \\
-  -e DOCKER_HOST=unix:///var/run/docker.sock \\
-  -v /etc/os-release:/host/etc/os-release:ro \\
-  -v /proc:/host/proc:ro \\
-  -v /sys:/host/sys:ro \\
-  -v /var/run/docker.sock:/var/run/docker.sock:ro \\
-  -v /etc/timezone:/etc/timezone:ro \\
-  netdata/netdata:latest
+if docker ps --format '{{.Names}}' | grep -qx 'netdata-child'; then
+  exit 0
+fi
+
+if docker ps -a --format '{{.Names}}' | grep -qx 'netdata-child'; then
+  docker start netdata-child >/dev/null
+  exit 0
+fi
+
+docker pull "$NETDATA_IMAGE" >/dev/null 2>&1 || true
+
+docker_args=(
+  run -d
+  --name netdata-child
+  --hostname "$HOSTNAME"
+  --network host
+  --cap-add SYS_PTRACE
+  --cap-add SYS_ADMIN
+  --security-opt apparmor=unconfined
+  -e NETDATA_CLAIM_TOKEN="$CLAIM_TOKEN"
+  -e NETDATA_CLAIM_URL="$CLAIM_URL"
+  -e NETDATA_CLAIM_ONLY=yes
+  -e NETDATA_TELEMETRY=no
+  -e DOCKER_HOST=unix:///var/run/docker.sock
+  -v /etc/os-release:/host/etc/os-release:ro
+  -v /proc:/host/proc:ro
+  -v /sys:/host/sys:ro
+  -v /var/run/docker.sock:/var/run/docker.sock:ro
+)
+
+if [[ -f /etc/timezone ]]; then
+  docker_args+=( -v /etc/timezone:/etc/timezone:ro )
+elif [[ -f /etc/localtime ]]; then
+  docker_args+=( -v /etc/localtime:/etc/localtime:ro )
+fi
+
+docker_args+=( "$NETDATA_IMAGE" )
+docker "${docker_args[@]}"
 EOF
 
 chmod +x /opt/pexnode-monitoring/enroll-child.sh
 
-# Create systemd service for auto-start
 cat > /etc/systemd/system/pexnode-netdata-child.service << 'EOF'
 [Unit]
 Description=Pexnode Netdata Child Agent
@@ -158,10 +209,9 @@ EOF
 
 systemctl daemon-reload
 systemctl enable pexnode-netdata-child.service
-systemctl start pexnode-netdata-child.service
+systemctl restart pexnode-netdata-child.service
 
 echo "Auto-enrollment configured"
-
 AUTO_SCRIPT
 
 echo "✅ Auto-enrollment systemd service installed"

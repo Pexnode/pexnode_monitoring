@@ -1,174 +1,154 @@
 #!/bin/bash
 # Pexnode Wings Node Provisioning Script
-# 
-# This script prepares a new game server node with:
-# - Wings daemon installation
-# - Panel integration
-# - Netdata monitoring
-# - Security hardening (firewall, SSH, kernel parameters)
+#
+# Idempotent provisioning for a Wings host:
+# - Installs Docker and Wings
+# - Pulls node config from panel
+# - Ensures systemd services
+# - Enrolls Netdata child (optional)
+# - Applies security hardening safely
 #
 # Usage:
-#   ./provision-wings-node.sh <panel_url> <node_id> <api_key> \
-#     [<netdata_token>] [<ssh_port>]
-#
-# Example:
-#   ./provision-wings-node.sh https://panel.pexnode.com 1 \
-#     ptla_xxxxx your_netdata_token 2222
+#   ./provision-wings-node.sh <panel_url> <node_id> <api_key> [<netdata_token>] [<ssh_port>]
 
-set -e
+set -Eeuo pipefail
 
-# Color output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Default values
 PANEL_URL="${1:-}"
 NODE_ID="${2:-}"
 WINGS_API_KEY="${3:-}"
 NETDATA_TOKEN="${4:-}"
 SSH_PORT="${5:-22}"
+WINGS_VERSION="${WINGS_VERSION:-v1.11.8}"
+NETDATA_IMAGE="${NETDATA_IMAGE:-netdata/netdata:latest}"
 
-# Validation
+on_error() {
+  local exit_code=$?
+  local line_no=$1
+  echo -e "${RED}ERROR:${NC} provision-wings-node.sh failed at line ${line_no} (exit ${exit_code})"
+  echo "Check logs with: journalctl -u wings -n 100 --no-pager"
+  exit "$exit_code"
+}
+trap 'on_error $LINENO' ERR
+
+ensure_root() {
+  if [[ "${EUID}" -ne 0 ]]; then
+    echo "Run as root"
+    exit 1
+  fi
+}
+
+ensure_line() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+
+  if grep -Eq "^${key}[[:space:]]+" "$file"; then
+    sed -i "s|^${key}[[:space:]].*|${key} ${value}|" "$file"
+  else
+    echo "${key} ${value}" >> "$file"
+  fi
+}
+
+ensure_sshd_option() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+
+  if grep -Eq "^[#[:space:]]*${key}[[:space:]]+" "$file"; then
+    sed -i "s|^[#[:space:]]*${key}[[:space:]].*|${key} ${value}|" "$file"
+  else
+    echo "${key} ${value}" >> "$file"
+  fi
+}
+
 if [[ -z "$PANEL_URL" ]] || [[ -z "$NODE_ID" ]] || [[ -z "$WINGS_API_KEY" ]]; then
   echo "Usage: $0 <panel_url> <node_id> <api_key> [<netdata_token>] [<ssh_port>]"
-  echo ""
-  echo "Required:"
-  echo "  panel_url:     Pterodactyl panel URL (e.g., https://panel.pexnode.com)"
-  echo "  node_id:       Node ID in panel (numeric)"
-  echo "  api_key:       Application API key from panel (ptla_...)"
-  echo ""
-  echo "Optional:"
-  echo "  netdata_token: Netdata claim token (for monitoring)"
-  echo "  ssh_port:      SSH port to use (default: 22)"
-  echo ""
-  echo "Get API key from:"
-  echo "  Panel → Admin → API → Application Keys → Create new"
   exit 1
 fi
 
-# Hostname for identification
+ensure_root
+
 HOSTNAME=$(hostname)
 TIMESTAMP=$(date +%s)
 
 echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}Pexnode Wings Node Provisioning${NC}"
 echo -e "${BLUE}========================================${NC}"
-echo ""
 echo "Host: $HOSTNAME"
 echo "Panel URL: $PANEL_URL"
 echo "Node ID: $NODE_ID"
 echo "SSH Port: $SSH_PORT"
-echo ""
+echo
 
-# ============================================================================
-# 1. SYSTEM UPDATES
-# ============================================================================
-echo -e "${BLUE}[1/7] Updating system...${NC}"
+echo -e "${BLUE}[1/7] Ensuring base packages...${NC}"
 apt-get update -qq
-apt-get upgrade -y -qq
 apt-get install -y -qq \
-  curl \
-  wget \
-  git \
-  sudo \
-  htop \
-  net-tools \
-  ufw \
-  fail2ban \
-  unattended-upgrades \
-  apt-listchanges
+  curl wget git sudo htop net-tools ufw fail2ban unattended-upgrades apt-listchanges ca-certificates
 
-echo -e "${GREEN}✓ System updated${NC}"
+echo -e "${GREEN}OK: base packages present${NC}"
 
-# ============================================================================
-# 2. INSTALL DOCKER
-# ============================================================================
-echo -e "${BLUE}[2/7] Installing Docker...${NC}"
-
-if command -v docker &> /dev/null; then
-  echo -e "${YELLOW}⚠ Docker already installed${NC}"
-else
-  curl -fsSL https://get.docker.com -o get-docker.sh
-  sh get-docker.sh
-  rm -f get-docker.sh
-  usermod -aG docker root
-  echo -e "${GREEN}✓ Docker installed${NC}"
+echo -e "${BLUE}[2/7] Ensuring Docker...${NC}"
+if ! command -v docker >/dev/null 2>&1; then
+  curl -fsSL https://get.docker.com -o /tmp/get-docker.sh
+  sh /tmp/get-docker.sh
+  rm -f /tmp/get-docker.sh
 fi
-
-# Enable Docker service
-systemctl enable docker
+systemctl enable docker >/dev/null 2>&1 || true
 systemctl start docker
 
-# ============================================================================
-# 3. INSTALL WINGS
-# ============================================================================
-echo -e "${BLUE}[3/7] Installing Wings daemon...${NC}"
+docker info >/dev/null 2>&1
 
-# Create necessary directories
-mkdir -p /etc/pterodactyl
-mkdir -p /var/lib/pterodactyl
-mkdir -p /var/log/pterodactyl
+echo -e "${GREEN}OK: Docker ready${NC}"
 
-# Download latest Wings binary
-WINGS_VERSION="v1.11.8"  # Update as needed
-echo "Downloading Wings $WINGS_VERSION..."
+echo -e "${BLUE}[3/7] Ensuring Wings binary...${NC}"
+mkdir -p /etc/pterodactyl /var/lib/pterodactyl /var/log/pterodactyl
 
-curl -L -o /usr/local/bin/wings \
-  "https://github.com/pterodactyl/wings/releases/download/$WINGS_VERSION/wings_linux_amd64"
-
-chmod u+x /usr/local/bin/wings
-
-# Verify installation
-if ! /usr/local/bin/wings --version; then
-  echo -e "${RED}✗ Wings installation failed${NC}"
-  exit 1
+current_wings_version=""
+if [[ -x /usr/local/bin/wings ]]; then
+  current_wings_version=$(/usr/local/bin/wings --version 2>/dev/null || true)
 fi
 
-echo -e "${GREEN}✓ Wings installed: $(/usr/local/bin/wings --version)${NC}"
+if [[ "$current_wings_version" != *"$WINGS_VERSION"* ]]; then
+  curl -fsSL -o /usr/local/bin/wings \
+    "https://github.com/pterodactyl/wings/releases/download/${WINGS_VERSION}/wings_linux_amd64"
+  chmod u+x /usr/local/bin/wings
+fi
 
-# ============================================================================
-# 4. CONFIGURE WINGS
-# ============================================================================
-echo -e "${BLUE}[4/7] Configuring Wings...${NC}"
+/usr/local/bin/wings --version >/dev/null
 
-# Fetch node configuration from panel
+echo -e "${GREEN}OK: Wings installed${NC}"
+
+echo -e "${BLUE}[4/7] Ensuring Wings config and service...${NC}"
 CONFIG_URL="${PANEL_URL}/api/application/nodes/${NODE_ID}/configuration"
+TMP_CONFIG="/tmp/pexnode-wings-config-${TIMESTAMP}.yml"
 
-echo "Fetching configuration from: $CONFIG_URL"
-
-if ! curl -s -H "Authorization: Bearer ${WINGS_API_KEY}" \
-  -H "Content-Type: application/json" \
+curl -fsSL --retry 3 --retry-delay 2 \
+  -H "Authorization: Bearer ${WINGS_API_KEY}" \
+  -H "Accept: application/json" \
   -X GET "$CONFIG_URL" \
-  -o /etc/pterodactyl/config.yml; then
-  echo -e "${RED}✗ Failed to fetch node configuration${NC}"
-  echo "Check:"
-  echo "  - Panel URL is correct"
-  echo "  - API key is valid"
-  echo "  - Node ID exists in panel"
+  -o "$TMP_CONFIG"
+
+if [[ ! -s "$TMP_CONFIG" ]]; then
+  echo "Downloaded config is empty"
   exit 1
 fi
 
-# Verify config was downloaded
-if [ ! -f /etc/pterodactyl/config.yml ]; then
-  echo -e "${RED}✗ Configuration file not found${NC}"
-  exit 1
+if [[ ! -f /etc/pterodactyl/config.yml ]] || ! cmp -s "$TMP_CONFIG" /etc/pterodactyl/config.yml; then
+  install -m 600 -o root -g root "$TMP_CONFIG" /etc/pterodactyl/config.yml
+  wings_config_changed="yes"
+else
+  wings_config_changed="no"
 fi
+rm -f "$TMP_CONFIG"
 
-# Set proper permissions
-chown root:root /etc/pterodactyl/config.yml
-chmod 600 /etc/pterodactyl/config.yml
-
-echo -e "${GREEN}✓ Wings configured${NC}"
-
-# ============================================================================
-# 5. SETUP WINGS SYSTEMD SERVICE
-# ============================================================================
-echo -e "${BLUE}[5/7] Installing Wings systemd service...${NC}"
-
-cat > /etc/systemd/system/wings.service << 'EOF'
+TMP_SERVICE="/tmp/wings.service.${TIMESTAMP}"
+cat > "$TMP_SERVICE" << 'EOF'
 [Unit]
 Description=Pterodactyl Wings Daemon
 After=network-online.target
@@ -191,158 +171,126 @@ ExecStart=/usr/local/bin/wings
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable wings
-systemctl start wings
-
-# Wait for Wings to start
-sleep 3
-
-if systemctl is-active --quiet wings; then
-  echo -e "${GREEN}✓ Wings service running${NC}"
+if [[ ! -f /etc/systemd/system/wings.service ]] || ! cmp -s "$TMP_SERVICE" /etc/systemd/system/wings.service; then
+  install -m 644 -o root -g root "$TMP_SERVICE" /etc/systemd/system/wings.service
+  wings_service_changed="yes"
 else
-  echo -e "${RED}✗ Wings failed to start${NC}"
-  systemctl status wings
-  journalctl -u wings -n 50
+  wings_service_changed="no"
+fi
+rm -f "$TMP_SERVICE"
+
+if [[ "$wings_service_changed" == "yes" ]]; then
+  systemctl daemon-reload
+fi
+
+systemctl enable wings >/dev/null 2>&1 || true
+if [[ "$wings_config_changed" == "yes" || "$wings_service_changed" == "yes" ]]; then
+  systemctl restart wings
+else
+  if ! systemctl is-active --quiet wings; then
+    systemctl start wings
+  fi
+fi
+
+if ! systemctl is-active --quiet wings; then
+  echo "Wings service is not active"
+  systemctl status wings --no-pager || true
   exit 1
 fi
 
-# ============================================================================
-# 6. SETUP NETDATA MONITORING (if token provided)
-# ============================================================================
+echo -e "${GREEN}OK: Wings running${NC}"
+
 if [[ -n "$NETDATA_TOKEN" ]]; then
-  echo -e "${BLUE}[6/7] Setting up Netdata monitoring...${NC}"
-  
-  # Install Docker (already done above, but ensure)
-  if ! command -v docker &> /dev/null; then
-    echo -e "${YELLOW}⚠ Docker not available for Netdata${NC}"
+  echo -e "${BLUE}[5/7] Ensuring Netdata child enrollment...${NC}"
+
+  if docker ps --format '{{.Names}}' | grep -qx 'netdata-child'; then
+    echo -e "${YELLOW}SKIP: netdata-child already running${NC}"
+  elif docker ps -a --format '{{.Names}}' | grep -qx 'netdata-child'; then
+    docker start netdata-child >/dev/null
+    echo -e "${GREEN}OK: started existing netdata-child${NC}"
   else
-    # Deploy Netdata child
-    docker stop netdata-child 2>/dev/null || true
-    docker rm netdata-child 2>/dev/null || true
-    
-    NETDATA_HOSTNAME="${HOSTNAME}-wings"
-    
-    docker run -d \
-      --name netdata-child \
-      --hostname "$NETDATA_HOSTNAME" \
-      --network host \
-      --cap-add SYS_PTRACE \
-      --cap-add SYS_ADMIN \
-      --security-opt apparmor=unconfined \
-      -e NETDATA_CLAIM_TOKEN="$NETDATA_TOKEN" \
-      -e NETDATA_CLAIM_URL="https://app.netdata.cloud" \
-      -e NETDATA_CLAIM_ONLY="yes" \
-      -e NETDATA_TELEMETRY="no" \
-      -e DOCKER_HOST=unix:///var/run/docker.sock \
-      -v /etc/os-release:/host/etc/os-release:ro \
-      -v /proc:/host/proc:ro \
-      -v /sys:/host/sys:ro \
-      -v /var/run/docker.sock:/var/run/docker.sock:ro \
-      -v /etc/timezone:/etc/timezone:ro \
-      netdata/netdata:latest
-    
-    sleep 3
-    
-    if docker ps | grep -q netdata-child; then
-      echo -e "${GREEN}✓ Netdata monitoring enrolled${NC}"
-    else
-      echo -e "${RED}✗ Netdata failed to start${NC}"
-      docker logs netdata-child 2>/dev/null || true
+    docker pull "$NETDATA_IMAGE" >/dev/null 2>&1 || true
+
+    docker_args=(
+      run -d
+      --name netdata-child
+      --hostname "${HOSTNAME}-wings"
+      --network host
+      --cap-add SYS_PTRACE
+      --cap-add SYS_ADMIN
+      --security-opt apparmor=unconfined
+      -e NETDATA_CLAIM_TOKEN="$NETDATA_TOKEN"
+      -e NETDATA_CLAIM_URL="https://app.netdata.cloud"
+      -e NETDATA_CLAIM_ONLY=yes
+      -e NETDATA_TELEMETRY=no
+      -e DOCKER_HOST=unix:///var/run/docker.sock
+      -v /etc/os-release:/host/etc/os-release:ro
+      -v /proc:/host/proc:ro
+      -v /sys:/host/sys:ro
+      -v /var/run/docker.sock:/var/run/docker.sock:ro
+    )
+
+    if [[ -f /etc/timezone ]]; then
+      docker_args+=( -v /etc/timezone:/etc/timezone:ro )
+    elif [[ -f /etc/localtime ]]; then
+      docker_args+=( -v /etc/localtime:/etc/localtime:ro )
     fi
+
+    docker_args+=( "$NETDATA_IMAGE" )
+    docker "${docker_args[@]}"
+
+    if ! docker ps --format '{{.Names}}' | grep -qx 'netdata-child'; then
+      echo "netdata-child did not come up"
+      docker logs --tail 80 netdata-child || true
+      exit 1
+    fi
+
+    echo -e "${GREEN}OK: Netdata enrolled${NC}"
   fi
 else
-  echo -e "${YELLOW}[6/7] Skipping Netdata (no token provided)${NC}"
+  echo -e "${YELLOW}[5/7] Skipping Netdata (no token provided)${NC}"
 fi
 
-# ============================================================================
-# 7. SECURITY HARDENING
-# ============================================================================
-echo -e "${BLUE}[7/7] Applying security hardening...${NC}"
+echo -e "${BLUE}[6/7] Applying SSH and firewall hardening...${NC}"
+cp /etc/ssh/sshd_config "/etc/ssh/sshd_config.backup.${TIMESTAMP}"
 
-# ----
-# 7.1: SSH Hardening
-# ----
-if [[ "$SSH_PORT" != "22" ]]; then
-  echo "Configuring SSH port: $SSH_PORT"
-  
-  # Backup original
-  cp /etc/ssh/sshd_config "/etc/ssh/sshd_config.backup.${TIMESTAMP}"
-  
-  # Update port
-  sed -i "s/^#Port 22/Port $SSH_PORT/" /etc/ssh/sshd_config
-  sed -i "s/^Port 22$/Port $SSH_PORT/" /etc/ssh/sshd_config
-fi
+ensure_sshd_option /etc/ssh/sshd_config Port "$SSH_PORT"
+ensure_sshd_option /etc/ssh/sshd_config PasswordAuthentication no
+ensure_sshd_option /etc/ssh/sshd_config PermitRootLogin prohibit-password
+ensure_sshd_option /etc/ssh/sshd_config X11Forwarding no
+ensure_sshd_option /etc/ssh/sshd_config PrintMotd no
+ensure_sshd_option /etc/ssh/sshd_config MaxAuthTries 3
+ensure_sshd_option /etc/ssh/sshd_config MaxSessions 2
+ensure_sshd_option /etc/ssh/sshd_config LoginGraceTime 30
+ensure_sshd_option /etc/ssh/sshd_config ClientAliveInterval 300
+ensure_sshd_option /etc/ssh/sshd_config ClientAliveCountMax 2
 
-# Disable password authentication (key-only)
-sed -i 's/^#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
-sed -i 's/^PasswordAuthentication yes$/PasswordAuthentication no/' /etc/ssh/sshd_config
-
-# Disable root login (if SSH key is setup)
-sed -i 's/^#PermitRootLogin prohibit-password/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-sed -i 's/^PermitRootLogin yes$/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-
-# Other SSH hardening
-cat >> /etc/ssh/sshd_config << 'EOF'
-
-# Pexnode Security Hardening
-X11Forwarding no
-PrintMotd no
-AcceptEnv LANG LC_*
-Subsystem sftp /usr/lib/openssh/sftp-server
-MaxAuthTries 3
-MaxSessions 2
-LoginGraceTime 30
-ClientAliveInterval 300
-ClientAliveCountMax 2
-EOF
-
-# Test and restart SSH
 if sshd -t; then
   systemctl restart sshd
-  echo -e "${GREEN}✓ SSH hardened (port: $SSH_PORT)${NC}"
 else
-  echo -e "${RED}✗ SSH configuration error${NC}"
+  cp "/etc/ssh/sshd_config.backup.${TIMESTAMP}" /etc/ssh/sshd_config
   systemctl restart sshd || true
+  echo "Invalid sshd config generated, restored backup"
+  exit 1
 fi
 
-# ----
-# 7.2: UFW Firewall
-# ----
-echo "Configuring UFW firewall..."
-
-# Enable UFW
-ufw --force enable
-
-# Default deny inbound
+ufw --force enable >/dev/null 2>&1 || true
 ufw default deny incoming
 ufw default allow outgoing
 
-# Allow SSH (on custom port)
-ufw allow "$SSH_PORT/tcp" comment "SSH"
+ufw allow "${SSH_PORT}/tcp" comment "SSH" >/dev/null 2>&1 || true
+ufw allow 25500:25600/tcp comment "Game Servers" >/dev/null 2>&1 || true
+ufw allow 25500:25600/udp comment "Game Servers" >/dev/null 2>&1 || true
+ufw allow 80/tcp comment "HTTP" >/dev/null 2>&1 || true
+ufw allow 443/tcp comment "HTTPS" >/dev/null 2>&1 || true
+ufw limit "${SSH_PORT}/tcp" comment "SSH Rate Limit" >/dev/null 2>&1 || true
 
-# Allow common game server ports (25500-25600 for Wings + game servers)
-ufw allow 25500:25600/tcp comment "Game Servers"
-ufw allow 25500:25600/udp comment "Game Servers"
-
-# Allow HTTP/HTTPS (if needed for other services)
-ufw allow 80/tcp comment "HTTP"
-ufw allow 443/tcp comment "HTTPS"
-
-# Rate limiting on SSH
-ufw limit "$SSH_PORT/tcp" comment "SSH Rate Limit"
-
-# Enable UFW
-systemctl enable ufw
+systemctl enable ufw >/dev/null 2>&1 || true
 systemctl restart ufw
 
-echo -e "${GREEN}✓ Firewall configured${NC}"
+echo -e "${GREEN}OK: SSH and firewall hardened${NC}"
 
-# ----
-# 7.3: Fail2Ban
-# ----
-echo "Configuring Fail2Ban..."
-
+echo -e "${BLUE}[7/7] Applying fail2ban, sysctl, and updates...${NC}"
 cat > /etc/fail2ban/jail.local << EOF
 [DEFAULT]
 bantime = 3600
@@ -354,67 +302,37 @@ enabled = true
 port = $SSH_PORT
 maxretry = 3
 bantime = 7200
-
-[sshd-ddos]
-enabled = true
-port = $SSH_PORT
 EOF
 
-systemctl enable fail2ban
+systemctl enable fail2ban >/dev/null 2>&1 || true
 systemctl restart fail2ban
 
-echo -e "${GREEN}✓ Fail2Ban configured${NC}"
-
-# ----
-# 7.4: Kernel Hardening
-# ----
-echo "Applying kernel hardening..."
-
-cat >> /etc/sysctl.conf << 'EOF'
-
+cat > /etc/sysctl.d/99-pexnode-hardening.conf << 'EOF'
 # Pexnode Security Hardening
-# Disable ICMP redirect
 net.ipv4.conf.all.send_redirects = 0
 net.ipv4.conf.default.send_redirects = 0
 net.ipv6.conf.all.send_redirects = 0
 net.ipv6.conf.default.send_redirects = 0
 
-# Disable ICMP redirect acceptance
 net.ipv4.conf.all.accept_redirects = 0
 net.ipv4.conf.default.accept_redirects = 0
 net.ipv6.conf.all.accept_redirects = 0
 net.ipv6.conf.default.accept_redirects = 0
 
-# Enable SYN cookies
 net.ipv4.tcp_syncookies = 1
 
-# Ignore ICMP ping (optional - can break monitoring)
-# net.ipv4.icmp_echo_ignore_all = 1
-
-# Log suspicious packets
 net.ipv4.conf.all.log_martians = 1
 net.ipv4.conf.default.log_martians = 1
 
-# Protect against tcp time-wait assassination hazards
 net.ipv4.tcp_rfc1337 = 1
 
-# Disable source packet routing
-net.ipv4.conf.all.send_redirects = 0
-net.ipv4.conf.default.send_redirects = 0
 net.ipv4.conf.all.accept_source_route = 0
 net.ipv4.conf.default.accept_source_route = 0
 net.ipv6.conf.all.accept_source_route = 0
 net.ipv6.conf.default.accept_source_route = 0
 EOF
 
-sysctl -p -q
-
-echo -e "${GREEN}✓ Kernel hardening applied${NC}"
-
-# ----
-# 7.5: Automatic Security Updates
-# ----
-echo "Configuring automatic security updates..."
+sysctl --system >/dev/null
 
 cat > /etc/apt/apt.conf.d/50unattended-upgrades << 'EOF'
 Unattended-Upgrade::Allowed-Origins {
@@ -428,38 +346,18 @@ Unattended-Upgrade::Automatic-Reboot "false";
 Unattended-Upgrade::Automatic-Reboot-Time "02:00";
 EOF
 
-systemctl enable unattended-upgrades
+systemctl enable unattended-upgrades >/dev/null 2>&1 || true
 systemctl restart unattended-upgrades
 
-echo -e "${GREEN}✓ Automatic updates configured${NC}"
+echo -e "${GREEN}OK: system hardening complete${NC}"
 
-# ============================================================================
-# SUMMARY
-# ============================================================================
-echo ""
+echo
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}✓ Provisioning complete!${NC}"
+echo -e "${GREEN}Provisioning complete${NC}"
 echo -e "${GREEN}========================================${NC}"
-echo ""
-echo "Node Details:"
-echo "  Hostname: $HOSTNAME"
-echo "  SSH Port: $SSH_PORT"
-echo "  Wings: Running (systemctl status wings)"
+echo "Hostname: $HOSTNAME"
+echo "SSH Port: $SSH_PORT"
+echo "Wings: $(systemctl is-active wings)"
 if [[ -n "$NETDATA_TOKEN" ]]; then
-  echo "  Monitoring: Enrolled"
+  echo "Monitoring: enrolled"
 fi
-echo ""
-echo "Next steps:"
-echo "  1. SSH: ssh -p $SSH_PORT root@$(hostname -I | awk '{print $1}')"
-echo "  2. Check Wings status: systemctl status wings"
-echo "  3. In panel, verify node appears and is online"
-echo "  4. Create allocations and start provisioning servers"
-echo ""
-echo "Security applied:"
-echo "  ✓ SSH port changed to $SSH_PORT"
-echo "  ✓ Password auth disabled"
-echo "  ✓ UFW firewall enabled"
-echo "  ✓ Fail2Ban configured"
-echo "  ✓ Kernel hardening applied"
-echo "  ✓ Automatic updates enabled"
-echo ""

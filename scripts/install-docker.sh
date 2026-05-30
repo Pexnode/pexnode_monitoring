@@ -1,35 +1,43 @@
 #!/bin/bash
 # Install Docker on host (called by enroll-host.sh)
 
-set -e
+set -Eeuo pipefail
 
-echo "Installing Docker..."
+echo "[docker] Ensuring Docker is installed..."
 
-# Detect OS
-if [ -f /etc/os-release ]; then
-  . /etc/os-release
-  OS=$ID
+if command -v docker >/dev/null 2>&1; then
+  echo "[docker] Docker already installed"
 else
-  echo "Cannot detect OS"
+  if [[ -f /etc/os-release ]]; then
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    OS="$ID"
+  else
+    echo "[docker] Cannot detect OS (missing /etc/os-release)"
+    exit 1
+  fi
+
+  case "$OS" in
+    ubuntu|debian)
+      apt-get update -qq
+      apt-get install -y -qq docker.io
+      ;;
+    centos|rhel|fedora)
+      yum install -y -q docker
+      ;;
+    *)
+      echo "[docker] Unsupported OS: $OS"
+      exit 1
+      ;;
+  esac
+fi
+
+systemctl enable docker >/dev/null 2>&1 || true
+systemctl start docker
+
+if ! docker info >/dev/null 2>&1; then
+  echo "[docker] Docker did not start correctly"
   exit 1
 fi
 
-case "$OS" in
-  ubuntu|debian)
-    apt-get update -qq
-    apt-get install -y -qq docker.io
-    systemctl enable docker
-    systemctl start docker
-    ;;
-  centos|rhel|fedora)
-    yum install -y -q docker
-    systemctl enable docker
-    systemctl start docker
-    ;;
-  *)
-    echo "Unsupported OS: $OS"
-    exit 1
-    ;;
-esac
-
-echo "Docker installed"
+echo "[docker] Docker ready"
