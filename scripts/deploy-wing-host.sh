@@ -77,7 +77,10 @@ if [[ "$DRY_RUN" == "true" ]]; then
 fi
 
 echo "Preparing remote workspace on ${TARGET_IP}"
-ssh "${SSH_ARGS[@]}" "$REMOTE" "mkdir -p ${REMOTE_WORKDIR}"
+ssh "${SSH_ARGS[@]}" "$REMOTE" bash -s -- "$REMOTE_WORKDIR" << 'EOF'
+set -Eeuo pipefail
+mkdir -p "$1"
+EOF
 
 echo "Uploading scripts"
 scp "${SSH_ARGS[@]}" ./scripts/provision-wings-node.sh "$REMOTE:${REMOTE_WORKDIR}/provision-wings-node.sh"
