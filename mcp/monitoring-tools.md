@@ -227,3 +227,81 @@ In pexnode_mcp, register these tools so Hugo can ask:
 - "Acknowledge the disk warning"
 - "Set CPU threshold to 75%"
 - "Show me the last 24 hours of CPU on Pterodactyl"
+
+---
+
+## Pterodactyl Action Tools (Minecraft-only)
+
+### 7. `ptero.server_power`
+
+Power actions for a server.
+
+**Parameters:**
+- `server_name` (string, required)
+- `signal` (string, required): `start` | `stop` | `restart` | `kill`
+- `game` (string, required): must equal `minecraft`
+
+**Rules:**
+- Tool enabled only when `MCP_ENABLE_WRITES=true`
+- Refuse if `game != minecraft`
+- Refuse if name search matches 0 or >1 servers
+
+### 8. `ptero.send_server_command`
+
+Send a console command to a Minecraft server.
+
+**Parameters:**
+- `server_name` (string, required)
+- `command` (string, required)
+- `game` (string, required): `minecraft`
+
+**Rules:**
+- Same gating as `ptero.server_power`
+- Optional denylist for high-risk commands (for example: `stop` if restart automation policy disallows direct stop)
+
+### 9. `ptero.reinstall_server`
+
+Reinstall a server (destructive action).
+
+**Parameters:**
+- `server_name` (string, required)
+- `confirm` (boolean, required)
+- `game` (string, required): `minecraft`
+
+**Rules:**
+- Requires `confirm=true`
+- Requires exact single server match
+- Must return explicit backup warning prior to execution
+
+---
+
+## WHMCS Data Tools
+
+### 10. `whmcs.get_client`
+### 11. `whmcs.get_client_services`
+### 12. `whmcs.get_client_invoices`
+
+Read-only tools for account and billing context during troubleshooting.
+
+---
+
+## Troubleshooting Tool
+
+### 13. `ops.run_troubleshooting_checklist`
+
+Runs a standard checklist and returns a structured diagnosis.
+
+**Checklist includes:**
+- Node online/offline in panel
+- Wings service status and recent logs
+- Netdata child status
+- API reachability (panel + WHMCS)
+- Server power state and resource pressure indicators
+
+---
+
+## Minecraft-only policy
+
+- Add `MCP_ALLOWED_GAMES=minecraft`
+- Reject write calls for non-Minecraft products
+- Keep all billing tools read-only

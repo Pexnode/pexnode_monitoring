@@ -1,0 +1,3 @@
+# name,ip,node_id,ssh_port,location,notes
+mc-node-01,10.20.0.11,11,2222,eu-north,primary node
+mc-node-02,10.20.0.12,12,2223,eu-north,secondary node

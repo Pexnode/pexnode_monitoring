@@ -27,6 +27,24 @@ cp .env.template .env.local
 docker-compose up -d
 ```
 
+Or deploy low-cost Azure ACI from scripts (recommended for automation):
+
+```bash
+export AZURE_SUBSCRIPTION_ID=<sub_id>
+export AZURE_SP_APP_ID=<app_id>
+export AZURE_SP_PASSWORD=<secret>
+export AZURE_SP_TENANT_ID=<tenant>
+export NETDATA_CLAIM_TOKEN=<netdata_claim_token>
+
+./scripts/azure/deploy-netdata-aci.sh
+```
+
+One-time service principal bootstrap helper:
+
+```bash
+./scripts/azure/bootstrap-service-principal.sh <sub_id> pexnode-monitoring pexnode-monitoring-ops
+```
+
 Get public IP:
 ```bash
 docker ps
@@ -331,6 +349,31 @@ Investigate (view metrics, container logs)
     ↓
 Manual action if needed (restart, scale up)
 ```
+
+---
+
+## Phase 7: MCP Operations Integration
+
+Use these templates to wire monitoring + actions in your MCP server:
+
+1. Copy environment template:
+
+```bash
+cp mcp/templates/pexnode-monitoring-mcp.env.example /path/to/pexnode_mcp/.env
+```
+
+2. Ensure required tool catalog is implemented:
+
+```bash
+cat mcp/templates/mcp-tools-required.json
+```
+
+3. Enable write actions only when ready:
+- `MCP_ENABLE_WRITES=true`
+- `MCP_ALLOWED_GAMES=minecraft`
+
+4. Validate tool set against setup guide:
+- `mcp/MCP-OPERATIONS-SETUP.md`
 
 ---
 

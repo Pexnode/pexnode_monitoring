@@ -1,0 +1,22 @@
+{
+  "requiredTools": [
+    "netdata.get_metrics",
+    "netdata.get_host_summary",
+    "netdata.list_alerts",
+    "netdata.acknowledge_alert",
+    "netdata.set_alert_threshold",
+    "ptero.server_power",
+    "ptero.send_server_command",
+    "ptero.reinstall_server",
+    "ptero.get_server_status",
+    "ptero.get_server_details",
+    "whmcs.get_client",
+    "whmcs.get_client_services",
+    "whmcs.get_client_invoices",
+    "ops.run_troubleshooting_checklist"
+  ],
+  "writeToolsRequire": {
+    "MCP_ENABLE_WRITES": true,
+    "MCP_ALLOWED_GAMES": ["minecraft"]
+  }
+}

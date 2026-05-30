@@ -13,13 +13,11 @@ See [docs/QUICK-START.md](docs/QUICK-START.md) for full setup.
 ### Provision New Wings Node (5-10 min)
 
 ```bash
-# Get API key from panel: Admin → API → Application Keys
-./scripts/provision-wings-node.sh \
-  https://panel.pexnode.com \
-  1 \
-  ptla_xxxxxxxxxxxxx \
-  your_netdata_token \
-  2222
+# From this repo, deploy everything to a target host IP:
+PANEL_URL=https://panel.pexnode.com \
+WINGS_API_KEY=ptla_xxxxxxxxxxxxx \
+NETDATA_TOKEN=your_netdata_token \
+./scripts/deploy-wing-host.sh 10.20.0.11 11 2222
 ```
 
 This will:
@@ -71,9 +69,16 @@ Hugo AI can query metrics and manage alerts via [mcp/monitoring-tools.md](mcp/mo
 - `scripts/auto-enroll-onboot.sh` — Systemd/cron auto-enrollment
 
 **Wings Node Provisioning:**
+- `scripts/deploy-wing-host.sh` — One-command remote deployment by host IP
 - `scripts/provision-wings-node.sh` — Complete node setup (Wings + security + monitoring)
 - `scripts/provision-wings-bootstrap.sh` — Cloud-init wrapper for automated provisioning
+- `scripts/setup-host-maintenance.sh` — Installs recurring health/cleanup jobs on host
 - `scripts/CLOUD-INIT-SETUP.md` — Cloud provider integration (Azure, AWS, etc.)
+
+**Azure Automation:**
+- `scripts/azure/bootstrap-service-principal.sh` — One-time least-scope SP bootstrap
+- `scripts/azure/deploy-netdata-aci.sh` — Deploy low-cost Netdata parent in Azure ACI
+- `scripts/azure/destroy-netdata-aci.sh` — Tear down Netdata ACI container
 
 **Documentation:**
 - `docs/QUICK-START.md` — 5-minute setup
@@ -83,6 +88,11 @@ Hugo AI can query metrics and manage alerts via [mcp/monitoring-tools.md](mcp/mo
 - `docs/WINGS-PROVISIONING.md` — New game node provisioning
 - `docs/TROUBLESHOOTING.md` — Common issues and fixes
 - `mcp/` — MCP tool specifications for Hugo AI
+
+**MCP Templates:**
+- `mcp/MCP-OPERATIONS-SETUP.md` — Required tools and safety model
+- `mcp/templates/pexnode-monitoring-mcp.env.example` — MCP env template
+- `mcp/templates/mcp-tools-required.json` — Required tool catalog
 
 ## Requirements
 

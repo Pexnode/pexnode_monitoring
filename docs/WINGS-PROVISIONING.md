@@ -53,6 +53,27 @@ From https://app.netdata.cloud → Spaces → Settings → Nodes & Agents
 
 ## Usage
 
+### Preferred: Deploy from this repository to a host IP
+
+Run from repo root:
+
+```bash
+PANEL_URL=https://panel.pexnode.com \
+WINGS_API_KEY=ptla_xxxxx \
+NETDATA_TOKEN=netdata_claim_token \
+./scripts/deploy-wing-host.sh 10.20.0.11 11 2222
+```
+
+Arguments:
+- `10.20.0.11`: target host IP
+- `11`: panel node id
+- `2222`: hardened SSH port to set on target
+
+This wrapper adds:
+- Local lock (prevents duplicate deploy from this repo)
+- Remote lock on host (prevents concurrent provision races)
+- Upload + execute + maintenance setup in one run
+
 ### Basic (No Monitoring)
 
 ```bash
@@ -81,6 +102,12 @@ From https://app.netdata.cloud → Spaces → Settings → Nodes & Agents
   ptla_xxxxxxxxxxxxx \
   abc123defg456hij789 \
   2222
+```
+
+After direct provisioning, run maintenance installer:
+
+```bash
+./scripts/setup-host-maintenance.sh
 ```
 
 ---
@@ -227,12 +254,10 @@ ufw allow 30000:30100/tcp
 Repeat for each new node:
 
 ```bash
-./provision-wings-node.sh \
-  https://panel.pexnode.com \
-  <next_node_id> \
-  <your_api_key> \
-  <netdata_token> \
-  <ssh_port>
+PANEL_URL=https://panel.pexnode.com \
+WINGS_API_KEY=<your_api_key> \
+NETDATA_TOKEN=<netdata_token> \
+./scripts/deploy-wing-host.sh <new-host-ip> <next_node_id> <ssh_port>
 ```
 
 Parent container (Netdata) automatically accepts new children nodes.
