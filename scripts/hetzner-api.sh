@@ -17,6 +17,7 @@
 # Required env: HETZNER_API_TOKEN
 # Load env:     source scripts/load-env.sh
 
+# shellcheck disable=SC1091  # env files are runtime-only and not tracked in the repo
 set -Eeuo pipefail
 
 HETZNER_API_BASE="https://api.hetzner.cloud/v1"

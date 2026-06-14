@@ -33,6 +33,7 @@
 #
 # Load env: source scripts/load-env.sh  OR  source ~/.config/pexnode/env
 
+# shellcheck disable=SC1091  # env files are runtime-only and not tracked in the repo
 set -Eeuo pipefail
 
 RED='\033[0;31m'
@@ -101,8 +102,6 @@ ALLOC_START=$(echo "$region_line"       | awk '{print $5}')
 ALLOC_END=$(echo "$region_line"         | awk '{print $6}')
 CUSTOMER_LABEL=$(echo "$region_line"    | awk '{print $7}' | tr '-' ' ')
 DEDICATED_REC=$(echo "$region_line"     | awk '{print $8}' | tr '-' ' ')
-# Legacy fallback for REGION_DESC (used in display only)
-REGION_DESC="${CUSTOMER_LABEL}"
 
 # ── validate required env ─────────────────────────────────────────────────────
 
@@ -130,7 +129,6 @@ fi
 
 PANEL_URL="${PEXNODE_PANEL_URL}"
 PTERO_API_KEY="${PEXNODE_PTERO_APPLICATION_API_KEY}"
-PANEL_HOSTNAME=$(echo "$PANEL_URL" | sed 's|https\?://||')
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
 VPS_NAME="wings-${REGION_ID}-${TIMESTAMP}"
 NODE_NAME="wings-${REGION_ID}"
@@ -368,12 +366,6 @@ WINGS_WAIT=0
 WINGS_MAX=180
 
 while [[ $WINGS_WAIT -lt $WINGS_MAX ]]; do
-  node_status=$(curl -s \
-    -H "Authorization: Bearer ${PTERO_API_KEY}" \
-    -H "Accept: application/json" \
-    "${PANEL_URL}/api/application/nodes/${PTERO_NODE_ID}" | \
-    python3 -c "import json,sys; print('ok')" 2>/dev/null || echo "pending")
-
   # Wings doesn't report a "connected" field via API — check via HTTP health
   if curl -s --max-time 5 "http://${VPS_IP}:8080" >/dev/null 2>&1; then
     break
@@ -404,12 +396,12 @@ ports = list(range(${ALLOC_START}, ${ALLOC_END} + 1))
 print(json.dumps({'ip': '${VPS_IP}', 'ports': [str(p) for p in ports]}))
 ")
 
-alloc_result=$(curl -s -X POST \
+curl -s -X POST \
   -H "Authorization: Bearer ${PTERO_API_KEY}" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json" \
   -d "$alloc_body" \
-  "${PANEL_URL}/api/application/nodes/${PTERO_NODE_ID}/allocations")
+  "${PANEL_URL}/api/application/nodes/${PTERO_NODE_ID}/allocations" >/dev/null
 
 ok "Allocations created"
 
@@ -420,11 +412,11 @@ if [[ -n "${DOMENESHOP_TOKEN:-}" && -n "${DOMENESHOP_SECRET:-}" ]]; then
 
   dns_body=$(python3 -c "import json; print(json.dumps({'host': 'wings-${REGION_ID}', 'ttl': 300, 'type': 'A', 'data': '${VPS_IP}'}))")
 
-  dns_result=$(curl -s -X POST \
+  curl -s -X POST \
     -u "${DOMENESHOP_TOKEN}:${DOMENESHOP_SECRET}" \
     -H "Content-Type: application/json" \
     -d "$dns_body" \
-    "https://api.domeneshop.no/v0/domains/2227110/dns")
+    "https://api.domeneshop.no/v0/domains/2227110/dns" >/dev/null
 
   ok "DNS record created"
 else
@@ -445,7 +437,7 @@ DNS_LINE=""
 [[ -n "${DOMENESHOP_TOKEN:-}" ]] && DNS_LINE="wings-${REGION_ID}.pexnode.com → ${VPS_IP}"
 
 ALERT_SUBJECT="Ny region aktiv: ${CUSTOMER_LABEL} — bestill dedikert server"
-ALERT_BODY="""En ny region er provisjonert og klar for kunder.
+ALERT_BODY="En ny region er provisjonert og klar for kunder.
 
 Region:       ${CUSTOMER_LABEL} (${REGION_ID})
 VPS IP:       ${VPS_IP}
@@ -463,7 +455,7 @@ ${DEDICATED_REC}
 Kunden er allerede i gang på VPS-en.
 Når dedikert server er klar: kjør migrasjon og slett VPS.
 
-Opprettet: ${CREATED_AT}"""
+Opprettet: ${CREATED_AT}"
 
 bash "${SCRIPT_DIR}/notify-ops.sh" "$ALERT_SUBJECT" "$ALERT_BODY"
 

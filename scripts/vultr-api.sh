@@ -17,6 +17,7 @@
 # Required env: VULTR_API_TOKEN
 # Load env:     source scripts/load-env.sh
 
+# shellcheck disable=SC1091  # env files are runtime-only and not tracked in the repo
 set -Eeuo pipefail
 
 VULTR_API_BASE="https://api.vultr.com/v2"

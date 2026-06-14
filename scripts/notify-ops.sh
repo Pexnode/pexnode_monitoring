@@ -19,6 +19,7 @@
 #   MAIL_SMTP_HOST     — SMTP server (e.g. mail.pexnode.com)
 #   ALERT_WEBHOOK_URL  — Discord/Slack/custom webhook URL
 
+# shellcheck disable=SC1091  # env files are runtime-only and not tracked in the repo
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
