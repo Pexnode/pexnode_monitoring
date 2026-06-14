@@ -1,0 +1,3 @@
+# Pexnode active Wings nodes — managed by create-cloud-node.sh
+# Format (tab-separated): REGION_ID  PROVIDER  VPS_ID  VPS_IP  PTERO_NODE_ID  CREATED_AT
+# Do not edit manually unless you know what you're doing.

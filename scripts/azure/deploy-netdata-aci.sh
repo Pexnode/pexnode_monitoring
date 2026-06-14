@@ -36,6 +36,7 @@ az container create \
   --resource-group "$RESOURCE_GROUP" \
   --name "$CONTAINER_NAME" \
   --image netdata/netdata:latest \
+  --os-type Linux \
   --cpu "$CPU" \
   --memory "$MEMORY" \
   --ports 19999 \

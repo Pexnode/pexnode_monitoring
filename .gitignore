@@ -1,0 +1,10 @@
+# Secrets / local config
+.env.local
+*.local.env
+
+# Runtime provisioning artifacts
+config/provisioning-alerts.log
+
+# OS
+.DS_Store
+Thumbs.db

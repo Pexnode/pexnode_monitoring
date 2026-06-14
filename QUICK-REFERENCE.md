@@ -4,6 +4,8 @@
 
 ✅ **Complete monitoring infrastructure** with Netdata  
 ✅ **Wings provisioning script** with security hardening  
+✅ **On-demand regional VPS provisioning** (Hetzner + Vultr, 5 regions)  
+✅ **Ops alert system** (email + Discord/Slack webhook on new region)  
 ✅ **Auto-enrollment** for new servers  
 ✅ **Alert configuration** (email, mobile, webhooks)  
 ✅ **Cloud-init integration** (Azure, AWS, DigitalOcean, Terraform)  
@@ -27,7 +29,7 @@ docker-compose up -d
 ./scripts/enroll-host.sh 104.37.190.203 <token>
 ```
 
-### Provision New Wings Node
+### Provision New Wings Node (existing server)
 ```bash
 ./scripts/provision-wings-node.sh \
   https://panel.pexnode.com \
@@ -36,6 +38,18 @@ docker-compose up -d
   <netdata-token> \
   <ssh-port>
 ```
+
+### Provision New Region (cloud VPS, on-demand)
+```bash
+# Dry-run first
+./scripts/create-cloud-node.sh eu-central --dry-run
+
+# Provision for real
+./scripts/create-cloud-node.sh eu-central
+```
+
+Active regions: `eu-central` `us-east` `us-west` `ap-southeast` `ap-northeast`  
+Full runbook: [pexnode_ops_agent/docs/30-Runbooks/Regional-Expansion.md](../pexnode_ops_agent/docs/30-Runbooks/Regional-Expansion.md)
 
 ### View Monitoring
 ```
@@ -52,6 +66,9 @@ https://app.netdata.cloud
 | **Quick start** | [docs/QUICK-START.md](docs/QUICK-START.md) |
 | **Alerts** | [docs/ALERT-RUNBOOK.md](docs/ALERT-RUNBOOK.md) |
 | **Wings provisioning** | [docs/WINGS-PROVISIONING.md](docs/WINGS-PROVISIONING.md) |
+| **Regional expansion** | [pexnode_ops_agent: docs/30-Runbooks/Regional-Expansion.md](../pexnode_ops_agent/docs/30-Runbooks/Regional-Expansion.md) |
+| **Region config** | [config/regions.conf](config/regions.conf) |
+| **Active nodes** | [config/nodes.state](config/nodes.state) |
 | **Cloud deployment** | [scripts/CLOUD-INIT-SETUP.md](scripts/CLOUD-INIT-SETUP.md) |
 | **Troubleshooting** | [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) |
 | **Checklist** | [PROVISIONING-CHECKLIST.md](PROVISIONING-CHECKLIST.md) |
