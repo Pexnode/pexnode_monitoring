@@ -10,7 +10,7 @@
 #   6. Fetch Wings token from panel → inject into VPS via deploy-wing-host.sh
 #   7. Wait for Wings to connect to panel
 #   8. Create port allocations on the new node
-#   9. Create DNS record: wings-<region>.pexnode.com
+#   9. Create DNS record: wings-<region>-<NN>.pexnode.com
 #  10. Append node record to config/nodes.state
 #  11. Send ops alert: order dedicated server now
 #
@@ -130,8 +130,36 @@ fi
 PANEL_URL="${PEXNODE_PANEL_URL}"
 PTERO_API_KEY="${PEXNODE_PTERO_APPLICATION_API_KEY}"
 TIMESTAMP=$(date +%Y%m%d%H%M%S)
-VPS_NAME="wings-${REGION_ID}-${TIMESTAMP}"
-NODE_NAME="wings-${REGION_ID}"
+
+# Wings nodes are named wings-<region>-<NN>. Find the highest existing NN for
+# this region on the panel and increment so multiple nodes per region (and the
+# future USW/USE split) never collide. Fails open to 01 if the API is
+# unreachable — the nodes.state guard below still prevents accidental dupes.
+existing_nodes=$(curl -s \
+  -H "Authorization: Bearer ${PTERO_API_KEY}" \
+  -H "Accept: application/json" \
+  "${PANEL_URL}/api/application/nodes?per_page=100" 2>/dev/null || echo '')
+
+NODE_NUM=$(REGION_ID="$REGION_ID" python3 - "$existing_nodes" <<'PY'
+import json, os, re, sys
+region = os.environ["REGION_ID"]
+raw = sys.argv[1] if len(sys.argv) > 1 else ""
+prefix = "wings-%s-" % region
+max_n = 0
+try:
+    data = json.loads(raw)
+    for node in data.get("data", []):
+        name = (node.get("attributes", {}).get("name") or "").lower()
+        if name.startswith(prefix) and name[len(prefix):].isdigit():
+            max_n = max(max_n, int(name[len(prefix):]))
+except Exception:
+    pass
+print("%02d" % (max_n + 1))
+PY
+)
+
+NODE_NAME="wings-${REGION_ID}-${NODE_NUM}"
+VPS_NAME="${NODE_NAME}-${TIMESTAMP}"
 
 echo ""
 echo -e "${BLUE}═══════════════════════════════════════════════════${NC}"
@@ -285,7 +313,7 @@ log "Step 4/8: Creating Pterodactyl node record..."
 NODE_FQDN="${VPS_IP}"
 # Use a DNS name if we have Domeneshop configured
 if [[ -n "${DOMENESHOP_TOKEN:-}" ]]; then
-  NODE_FQDN="wings-${REGION_ID}.pexnode.com"
+  NODE_FQDN="${NODE_NAME}.pexnode.com"
 fi
 
 ptero_node_body=$(python3 -c "
@@ -408,9 +436,9 @@ ok "Allocations created"
 # ── step 9: DNS record (optional) ────────────────────────────────────────────
 
 if [[ -n "${DOMENESHOP_TOKEN:-}" && -n "${DOMENESHOP_SECRET:-}" ]]; then
-  log "Step 9: Creating DNS record wings-${REGION_ID}.pexnode.com → ${VPS_IP}..."
+  log "Step 9: Creating DNS record ${NODE_NAME}.pexnode.com → ${VPS_IP}..."
 
-  dns_body=$(python3 -c "import json; print(json.dumps({'host': 'wings-${REGION_ID}', 'ttl': 300, 'type': 'A', 'data': '${VPS_IP}'}))")
+  dns_body=$(python3 -c "import json; print(json.dumps({'host': '${NODE_NAME}', 'ttl': 300, 'type': 'A', 'data': '${VPS_IP}'}))")
 
   curl -s -X POST \
     -u "${DOMENESHOP_TOKEN}:${DOMENESHOP_SECRET}" \
@@ -434,7 +462,7 @@ ok "State recorded in config/nodes.state"
 # ── step 10 (final): ops alert — order dedicated server ──────────────────────
 
 DNS_LINE=""
-[[ -n "${DOMENESHOP_TOKEN:-}" ]] && DNS_LINE="wings-${REGION_ID}.pexnode.com → ${VPS_IP}"
+[[ -n "${DOMENESHOP_TOKEN:-}" ]] && DNS_LINE="${NODE_NAME}.pexnode.com → ${VPS_IP}"
 
 ALERT_SUBJECT="Ny region aktiv: ${CUSTOMER_LABEL} — bestill dedikert server"
 ALERT_BODY="En ny region er provisjonert og klar for kunder.
@@ -470,7 +498,7 @@ echo "  VPS IP:        ${VPS_IP}"
 echo "  VPS ID:        ${VPS_ID} (${PROVIDER})"
 echo "  Pterodactyl:   Node #${PTERO_NODE_ID}"
 echo "  Allocations:   ${ALLOC_START}–${ALLOC_END}"
-[[ -n "${DOMENESHOP_TOKEN:-}" ]] && echo "  DNS:           wings-${REGION_ID}.pexnode.com"
+[[ -n "${DOMENESHOP_TOKEN:-}" ]] && echo "  DNS:           ${NODE_NAME}.pexnode.com"
 echo ""
 echo -e "  ${YELLOW}ACTION REQUIRED: Bestill dedikert server for ${CUSTOMER_LABEL}${NC}"
 echo "  ${DEDICATED_REC}"
