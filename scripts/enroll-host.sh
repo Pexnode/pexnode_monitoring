@@ -84,6 +84,21 @@ fi
 
 docker pull "$NETDATA_IMAGE" >/dev/null 2>&1 || true
 
+# Ensure config dirs exist on host
+mkdir -p /opt/netdata/health.d /opt/netdata/go.d
+
+# Write streaming config (parent FQDN + UUID API key)
+cat > /opt/netdata/stream.conf << 'STREAMEOF'
+[stream]
+    enabled = yes
+    destination = pexnode-netdata.norwayeast.azurecontainer.io:19999
+    api key = 449c2b8f-8a52-467c-b6e6-2532dfafadc2
+    timeout seconds = 60
+    send charts matching = *
+    buffer size bytes = 1048576
+    reconnect delay seconds = 5
+STREAMEOF
+
 docker_args=(
   run -d
   --name netdata-child
@@ -101,6 +116,9 @@ docker_args=(
   -v /proc:/host/proc:ro
   -v /sys:/host/sys:ro
   -v /var/run/docker.sock:/var/run/docker.sock:ro
+  -v /opt/netdata/stream.conf:/etc/netdata/stream.conf:ro
+  -v /opt/netdata/health.d:/etc/netdata/health.d:ro
+  -v /opt/netdata/go.d:/etc/netdata/go.d:ro
 )
 
 if [[ -f /etc/timezone ]]; then
@@ -159,6 +177,8 @@ fi
 
 docker pull "$NETDATA_IMAGE" >/dev/null 2>&1 || true
 
+mkdir -p /opt/netdata/health.d /opt/netdata/go.d
+
 docker_args=(
   run -d
   --name netdata-child
@@ -176,6 +196,9 @@ docker_args=(
   -v /proc:/host/proc:ro
   -v /sys:/host/sys:ro
   -v /var/run/docker.sock:/var/run/docker.sock:ro
+  -v /opt/netdata/stream.conf:/etc/netdata/stream.conf:ro
+  -v /opt/netdata/health.d:/etc/netdata/health.d:ro
+  -v /opt/netdata/go.d:/etc/netdata/go.d:ro
 )
 
 if [[ -f /etc/timezone ]]; then
