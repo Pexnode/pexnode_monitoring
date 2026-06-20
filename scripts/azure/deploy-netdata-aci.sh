@@ -46,7 +46,11 @@ az container create \
     NETDATA_CLAIM_TOKEN="$NETDATA_CLAIM_TOKEN" \
     NETDATA_CLAIM_URL="https://app.netdata.cloud" \
     NETDATA_CLAIM_ONLY="no" \
-    NETDATA_TELEMETRY="no" >/dev/null
+    NETDATA_TELEMETRY="no" \
+    DISCORD_WEBHOOK_OPS="${DISCORD_WEBHOOK_OPS:-}" \
+    NETDATA_STREAMING_API_KEY="${NETDATA_STREAMING_API_KEY:-449c2b8f-8a52-467c-b6e6-2532dfafadc2}" \
+  --command-line 'sh -c "if [ -n \"$DISCORD_WEBHOOK_OPS\" ]; then printf \"SEND_DISCORD=YES\nDISCORD_WEBHOOK_URL=%s\nDEFAULT_RECIPIENT_DISCORD=sysadmin\nrole_recipients_discord[sysadmin]=%s\nSEND_EMAIL=NO\nSEND_SLACK=NO\nSEND_TELEGRAM=NO\n\" \"$DISCORD_WEBHOOK_OPS\" \"$DISCORD_WEBHOOK_OPS\" > /etc/netdata/health_alarm_notify.conf; fi && printf \"[%s]\n    enabled = yes\n    default memory = save\n    health enabled by default = auto\n    allow from = *\n    default history = 3600\n    default update every = 1\n\" \"$NETDATA_STREAMING_API_KEY\" > /etc/netdata/stream.conf && exec /usr/sbin/netdata -D -u netdata -s / -p 19999 0</dev/null"' \
+  >/dev/null
 
 FQDN=$(az container show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_NAME" --query ipAddress.fqdn -o tsv)
 IP=$(az container show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_NAME" --query ipAddress.ip -o tsv)

@@ -24,6 +24,9 @@ services:
       
       # Enable streaming (for children to connect)
       NETDATA_API_KEY: ${NETDATA_API_KEY:-pexnode-monitoring-key}
+
+      # Discord alert notifications
+      DISCORD_WEBHOOK_OPS: ${DISCORD_WEBHOOK_OPS:-}
     volumes:
       - netdata_lib:/var/lib/netdata
       - netdata_cache:/var/cache/netdata
@@ -31,6 +34,7 @@ services:
       - ./netdata.conf:/etc/netdata/netdata.conf:ro
       - ./health.d:/etc/netdata/health.d:ro
       - ./stream.conf:/etc/netdata/stream.conf:ro
+      - ./health_alarm_notify.conf:/etc/netdata/health_alarm_notify.conf:ro
     networks:
       - monitoring
     healthcheck:
